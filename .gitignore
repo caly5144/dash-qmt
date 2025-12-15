@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data
+data/
+*.db
+*.sqlite3
+
+# Secrets (Privacy)
+secrets/
