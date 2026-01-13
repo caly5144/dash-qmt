@@ -5,12 +5,17 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent.parent
 SECRET_DIR = BASE_DIR / "secrets"
 SECRET_FILE = SECRET_DIR / "config.json"
+DATA_DIR = BASE_DIR / "data"
+
+if not DATA_DIR.exists():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # 默认配置（当配置文件不存在时使用，作为模板）
 DEFAULT_CONFIG = {
     "MINI_QMT_PATH": r"D:\迅投极速交易终端 睿智融科版\userdata_mini",
     "ACCOUNT_ID": "88888888",
-    "APP_SECRET_KEY": "magic-dash-pro-demo"
+    "APP_SECRET_KEY": "magic-dash-pro-demo",
+    "TUSHARE_API_TOKEN" : "https://tushare.pro/register?reg=306588"
 }
 
 def load_config():

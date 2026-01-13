@@ -1,14 +1,8 @@
 import json
 from pathlib import Path
+from configs.settings import DATA_DIR
 
-# 配置文件路径
-BASE_DIR = Path(__file__).parent.parent
-DATA_DIR = BASE_DIR / "data"
-
-if not DATA_DIR.exists():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-CONFIG_PATH = DATA_DIR / "fees_config.json"
+FEE_CONFIG_PATH = DATA_DIR / "fees_config.json"
 
 # 默认费率配置
 DEFAULT_FEES = {
@@ -67,13 +61,13 @@ class FeeConfigManager:
 
     def load_config(self):
         """加载配置，如果不存在则创建默认配置"""
-        if not CONFIG_PATH.exists():
+        if not FEE_CONFIG_PATH.exists():
             self._config = DEFAULT_FEES
             self.save_config()
-            print(f"已生成默认费率配置文件: {CONFIG_PATH}")
+            print(f"已生成默认费率配置文件: {FEE_CONFIG_PATH}")
         else:
             try:
-                with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                with open(FEE_CONFIG_PATH, 'r', encoding='utf-8') as f:
                     self._config = json.load(f)
             except Exception as e:
                 print(f"加载费率配置失败，使用默认配置: {e}")
@@ -81,7 +75,7 @@ class FeeConfigManager:
 
     def save_config(self):
         """保存配置到文件"""
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        with open(FEE_CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(self._config, f, indent=4, ensure_ascii=False)
 
     def get_config(self):
