@@ -81,22 +81,16 @@ class XtManager:
     def _process_merge_and_save(self, trade_list):
         """
         【核心逻辑】接收原始成交列表，按 order_id 合并后入库
-        逻辑：
-        1. 按 order_id 分组
-        2. 计算总数量、总金额、加权均价
-        3. 重新计算总费用
-        4. 找出该组最早的 traded_id 作为主ID，删除其余分笔ID，确保数据库只有一条合并记录
+        解决：分笔成交合并、去重、费用重算
         """
         if not trade_list: return 0
         
-        # 转 DataFrame 方便处理
+        # 1. 手动提取对象属性 (修复 __dict__ 报错)
         data = []
         for t in trade_list:
-            # 【修复】手动提取属性，而不是依赖 __dict__
             if isinstance(t, dict):
                 d = t
             else:
-                # XtTrade 对象属性提取
                 d = {
                     'traded_id': str(t.traded_id),
                     'order_id': str(t.order_id),
@@ -118,48 +112,48 @@ class XtManager:
         
         count = 0
         
-        # 按 order_id 分组处理
+        # 2. 按 order_id 分组聚合
         for order_id, group in df.groupby('order_id'):
             try:
-                # 1. 聚合计算
+                # --- 聚合计算 ---
                 total_volume = group['traded_volume'].sum()
                 total_amount = group['traded_amount'].sum()
                 
                 if total_volume == 0: continue
                 
-                # 加权均价
                 avg_price = total_amount / total_volume
                 
-                # 2. 确定代表信息 (取最早的一笔)
-                group = group.sort_values('traded_time') # 按时间正序
-                first = group.iloc[0] # 最早一笔
-                last = group.iloc[-1] # 最新一笔 (用于更新时间)
+                # --- 确定主记录信息 ---
+                # 按时间排序：取最早的一笔作为“身份标识”（traded_id），取最新的一笔作为“更新时间”
+                group = group.sort_values('traded_time') 
+                first = group.iloc[0] 
+                last = group.iloc[-1] 
                 
-                # 3. 确定主键 ID (使用第一笔的 traded_id)
-                # 这样能保证多次推送时 ID 稳定
-                primary_traded_id = first['traded_id']
+                primary_traded_id = first['traded_id'] # 始终锁定第一笔的ID为主键，保证ID稳定
                 
-                # 4. 清理旧数据 (关键步骤)
-                # 找出该组中除了主ID以外的所有 traded_id，从数据库删除
-                # 这样可以把之前的分笔记录清理掉，只留合并后的
+                # --- 3. 清理旧数据 (关键) ---
+                # 这一步保证：如果之前存过分笔记录(非主ID)，把它们删掉，只保留合并后的主记录
                 all_ids = group['traded_id'].tolist()
                 ids_to_delete = [tid for tid in all_ids if tid != primary_traded_id]
                 
                 if ids_to_delete:
                     TradeRecord.delete().where(TradeRecord.traded_id.in_(ids_to_delete)).execute()
                 
-                # 5. 计算费用 (基于总额)
+                # --- 4. 费用重算 ---
                 side = self._calc_side(first['order_type'], first['direction'], first['offset_flag'])
                 fees = FeeCalculator.calculate_all_fees(first['stock_code'], avg_price, total_volume, side)
                 
                 stock_name = stock_info_manager.get_stock_name(first['stock_code'])
-                dt = datetime.fromtimestamp(last['traded_time']) # 使用最新成交时间
+                dt = datetime.fromtimestamp(last['traded_time']) 
                 
                 strategy = first['strategy_name'] if first['strategy_name'] else '手动下单'
 
-                # 6. 更新/插入主记录
+                # --- 5. 更新或插入 (Replace) ---
+                # 无论数据库里有没有，都直接覆盖。
+                # 如果是新单子 -> Insert
+                # 如果是旧单子更新 -> Update
                 TradeRecord.replace(
-                    traded_id=primary_traded_id, # 始终使用第一笔的ID
+                    traded_id=primary_traded_id,
                     order_id=order_id,
                     stock_code=first['stock_code'],
                     stock_name=stock_name,
@@ -171,8 +165,8 @@ class XtManager:
                     offset_flag=first['offset_flag'],
                     
                     price=avg_price,          # 加权均价
-                    volume=int(total_volume), # 总量
-                    amount=total_amount,      # 总额
+                    volume=int(total_volume), # 累积总量
+                    amount=total_amount,      # 累积总额
                     
                     side=side,
                     strategy_name=strategy,
@@ -192,24 +186,15 @@ class XtManager:
         return count
 
     def sync_trades(self):
-        """
-        同步当日成交 (自动合并分笔)
-        """
+        """同步当日成交"""
         if not self.trader: return 0
-        
-        # 查询当日所有成交
         trades = self.trader.query_stock_trades(self.acc)
         if not trades: return 0
-        
-        # 统一交给合并逻辑处理
         return self._process_merge_and_save(trades)
     
     def sync_orders(self):
-        """
-        同步当日委托 (保持原样，OrderRecord 本身就是聚合状态)
-        """
+        """同步当日委托"""
         if not self.trader: return 0
-        
         orders = self.trader.query_stock_orders(self.acc, cancelable_only=False)
         if not orders: return 0
         
@@ -283,41 +268,43 @@ class MyTraderCallback(XtQuantTraderCallback):
 
     def on_stock_trade(self, trade):
         """
-        实时成交推送 (修改为合并逻辑)
+        实时成交推送 (合并逻辑)
         """
         try:
             print(f"【XtQuant】收到成交推送: {trade.stock_code} ({trade.traded_volume}股)")
             
-            # 1. 获取管理器实例
             manager = XtManager()
             if not manager.trader: return
 
-            # 2. 关键：不只是处理这一笔，而是获取该 OrderID 对应的所有成交记录
-            # 这样才能保证拿到完整的历史分笔，从而正确计算总数和均价
+            # 1. 核心策略：收到推送后，不直接只处理这一笔，而是去查询该委托的“全家桶”
+            #    这样无论是第1笔还是第N笔，我们都能拿到当前状态的所有分笔
             all_trades = manager.trader.query_stock_trades(manager.acc)
             
+            related_trades = []
+            target_order_id = str(trade.order_id) # 统一转字符串
+            
             if all_trades:
-                # 3. 过滤出当前委托的所有成交 (Python端过滤，QMT API不支持按Order查询)
-                target_order_id = trade.order_id
-                related_trades = [t for t in all_trades if t.order_id == target_order_id]
+                # 过滤出该 OrderID 的所有成交
+                related_trades = [t for t in all_trades if str(t.order_id) == target_order_id]
+            
+            # 2. 兜底处理：如果 query 结果里没有当前这笔（极低概率，如QMT还没来得及更新缓存）
+            #    我们手动把当前推送的 trade 加进去，确保不会漏单
+            #    这也是解决“首笔交易可能查不到”的关键
+            known_ids = set(str(t.traded_id) for t in related_trades)
+            if str(trade.traded_id) not in known_ids:
+                print("【注意】查询列表未包含当前推送，手动追加")
+                related_trades.append(trade)
                 
-                # 4. 如果查询结果里还没包含当前这笔推送(极少数情况)，手动加上
-                known_ids = set(t.traded_id for t in related_trades)
-                if trade.traded_id not in known_ids:
-                    related_trades.append(trade)
-                
-                # 5. 调用合并处理逻辑
-                manager._process_merge_and_save(related_trades)
+            # 3. 统一合并入库
+            manager._process_merge_and_save(related_trades)
             
         except Exception as e:
             print(f"【XtQuant】处理成交推送失败: {e}")
+            import traceback
+            traceback.print_exc()
     
     def on_stock_order(self, order):
-        """
-        委托回报推送 (逻辑不变，直接更新)
-        """
         try:
-            # print(f"【XtQuant】收到委托推送: {order.stock_code} 状态:{order.order_status}")
             manager = XtManager()
             side = manager._calc_side(order.order_type, order.direction, order.offset_flag)
             strategy_name = order.strategy_name if order.strategy_name else '手动下单'
@@ -348,5 +335,4 @@ class MyTraderCallback(XtQuantTraderCallback):
         except Exception as e:
             print(f"【XtQuant】更新委托记录失败: {e}")
 
-# 全局单例
 xt_manager = XtManager()
