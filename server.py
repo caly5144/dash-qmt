@@ -9,8 +9,8 @@ from models.users import Users
 from configs import BaseConfig, AuthConfig
 
 from datetime import datetime, timedelta
-from apscheduler.schedulers.background import BackgroundScheduler
-from utils.market_data_sync import run_daily_sync_task
+# from apscheduler.schedulers.background import BackgroundScheduler
+# from utils.market_data_sync import run_daily_sync_task
 
 
 external_js = [
@@ -41,18 +41,18 @@ principals = Principal(app.server)
 # ===========================
 # 新增：配置定时任务调度器
 # ===========================
-scheduler = BackgroundScheduler()
+# scheduler = BackgroundScheduler()
 
 # 添加定时任务：每天下午 17:00 执行数据同步
 # 考虑到收盘后数据整理，建议设置在 16:00 或 17:00 以后
-scheduler.add_job(
-    func=run_daily_sync_task, 
-    trigger='cron', 
-    hour=17, 
-    minute=0, 
-    id='daily_market_sync',
-    replace_existing=True
-)
+# scheduler.add_job(
+#     func=run_daily_sync_task, 
+#     trigger='cron', 
+#     hour=17, 
+#     minute=0, 
+#     id='daily_market_sync',
+#     replace_existing=True
+# )
 
 # 可选：在启动时立即执行一次（用于测试，生产环境可注释掉）
 # scheduler.add_job(func=run_daily_sync_task, trigger='date', run_date=datetime.now() + timedelta(seconds=10))
@@ -60,8 +60,8 @@ scheduler.add_job(
 # 启动调度器
 # 注意：在 Debug 模式下 Flask reloader 会导致 scheduler 运行两次，可以使用 use_reloader=False 解决
 # 或者简单判断一下是否为主进程
-if not scheduler.running:
-    scheduler.start()
+# if not scheduler.running:
+#     scheduler.start()
 
 
 class User(UserMixin):
