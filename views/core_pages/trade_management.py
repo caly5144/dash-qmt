@@ -1,3 +1,4 @@
+from dash import html
 import feffery_antd_components as fac
 import feffery_utils_components as fuc
 from feffery_dash_utils.style_utils import style
@@ -36,17 +37,17 @@ def render():
             fac.AntdBreadcrumb(items=[{"title": "量化平台"}, {"title": "交易管理"}]),
             fuc.FefferyTimeout(id='trade-init-trigger', delay=0),
             
-            # 操作栏
-            fac.AntdRow(
-                [
-                    fac.AntdCol(
-                        fac.AntdSpace([
-                            fac.AntdButton("出入金记录", id='btn-fund-flow'),
-                        ]),
-                        span=24
-                    )
-                ]
-            ),
+            # # 操作栏
+            # fac.AntdRow(
+            #     [
+            #         fac.AntdCol(
+            #             fac.AntdSpace([
+            #                 fac.AntdButton("出入金记录", id='btn-fund-flow'),
+            #             ]),
+            #             span=24
+            #         )
+            #     ]
+            # ),
 
             fac.AntdTabs(
                 id='trade-manage-tabs',
@@ -101,6 +102,95 @@ def render():
                             size='small',
                         )
                     },
+                    {
+                        'label': '历史流水',
+                        'key': 'history-flow',
+                        'children': html.Div(
+                            [
+                                # 1. 顶部操作栏
+                                html.Div(
+                                    [
+                                        # 新增：带二次确认的删除按钮
+                                        fac.AntdPopconfirm(
+                                            fac.AntdButton(
+                                                '删除记录',
+                                                id='delete-fund-flow-btn',
+                                                type='primary',
+                                                danger=True,
+                                                style={'marginRight': '10px', 'marginBottom': '10px'}
+                                            ),
+                                            id='delete-fund-flow-confirm',
+                                            title='确定要删除选中的流水记录吗？',
+                                            okText='确定',
+                                            cancelText='取消'
+                                        ),
+                                        # 原有的新增按钮
+                                        fac.AntdButton(
+                                            '新增流水',
+                                            id='add-fund-flow-btn',
+                                            type='primary',
+                                            style={'marginBottom': '10px'}
+                                        )
+                                    ],
+                                    style={'textAlign': 'right'}
+                                ),
+                                
+                                # 2. 数据表格
+                                fac.AntdTable(
+                                    id='trade-fund-flow-table',
+                                    columns=[
+                                        {'title': '日期', 'dataIndex': 'date'},
+                                        {'title': '类型', 'dataIndex': 'type'},
+                                        {'title': '金额', 'dataIndex': 'amount'},
+                                        {'title': '备注', 'dataIndex': 'remark'},
+                                    ],
+                                    bordered=True,
+                                    # 【新增】开启多选框
+                                    rowSelectionType='checkbox'
+                                ),
+                                
+                                # 3. 新增流水模态框
+                                fac.AntdModal(
+                                    fac.AntdForm(
+                                        [
+                                            fac.AntdFormItem(
+                                                fac.AntdDatePicker(id='add-flow-date', style={'width': '100%'}),
+                                                label='发生日期',
+                                                required=True
+                                            ),
+                                            fac.AntdFormItem(
+                                                fac.AntdSelect(
+                                                    id='add-flow-type',
+                                                    options=[
+                                                        {'label': '入金', 'value': 'deposit'},
+                                                        {'label': '出金', 'value': 'withdraw'}
+                                                    ],
+                                                    placeholder='请选择业务类型'
+                                                ),
+                                                label='业务类型',
+                                                required=True
+                                            ),
+                                            fac.AntdFormItem(
+                                                fac.AntdInputNumber(id='add-flow-amount', min=0, style={'width': '100%'}),
+                                                label='发生金额',
+                                                required=True
+                                            ),
+                                            fac.AntdFormItem(
+                                                fac.AntdInput(id='add-flow-remark', placeholder='请输入备注'),
+                                                label='备注'
+                                            )
+                                        ],
+                                        layout='vertical'
+                                    ),
+                                    id='add-fund-flow-modal',
+                                    title='新增资金流水',
+                                    renderFooter=True,
+                                    okText='确认提交',
+                                    cancelText='取消'
+                                )
+                            ]
+                        )
+                    }
                 ]
             )
 

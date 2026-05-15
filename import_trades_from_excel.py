@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import time
 from datetime import datetime, timedelta
 from models.trade_models import TradeRecord, trade_db
@@ -142,10 +143,45 @@ def import_excel():
     else:
         print("没有新的记录需要导入。")
 
+
+import pandas as pd
+from datetime import datetime
+from models.trade_models import FundFlow, trade_db
+
+def import_data_from_image_content():
+    # 原始字段：发生日期, 业务名称, 发生金额, 备注
+    df = pd.read_excel('出入金.xlsx', usecols=['成交日期', '交易类别', '发生金额', '备注'])
+    df.columns = ['date', 'name', 'amount', 'remark']
+    df = df.replace({np.nan: None})
+    raw_data = df.to_dict(orient='records')
+    
+    
+    print("开始清洗并存储资金流水数据...")
+    
+    count = 0
+    with trade_db.connection_context():
+        for item in raw_data:
+            # 数据清洗与映射
+            # 如果金额 > 0 记为 deposit (入金)，否则记为 withdraw (出金)
+            flow_type = 'deposit' if item['amount'] > 0 else 'withdraw'
+            
+            # 存储到数据库
+            FundFlow.create(
+                date=datetime.strptime(item['date'], '%Y-%m-%d'),
+                flow_type=flow_type,
+                amount=abs(item['amount']), # 存储绝对值
+                remark=item['remark']
+            )
+            count += 1
+            
+    print(f"成功导入 {count} 条流水记录。")
+
+
 if __name__ == '__main__':
     # 确保表存在
-    if not trade_db.table_exists('traderecord'):
-        trade_db.connect()
-        trade_db.create_tables([TradeRecord])
+    # if not trade_db.table_exists('traderecord'):
+    #     trade_db.connect()
+    #     trade_db.create_tables([TradeRecord])
         
-    import_excel()
+    # import_excel()
+    import_data_from_image_content()
