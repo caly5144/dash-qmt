@@ -5,7 +5,7 @@ from xtquant import xtdata
 from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
 from xtquant.xttype import StockAccount
 from xtquant import xtconstant
-from models.trade_models import TradeRecord, OrderRecord
+from models.trade_models import TradeRecord, OrderRecord, trade_db
 from utils.fee_calculator import FeeCalculator
 from utils.stock_info_manager import stock_info_manager
 from peewee import IntegrityError
@@ -113,7 +113,8 @@ class XtManager:
         count = 0
         
         # 2. 按 order_id 分组聚合
-        for order_id, group in df.groupby('order_id'):
+        for keys, group in df.groupby(['order_id', 'stock_code', 'direction'], dropna=False):
+            order_id = keys[0]  # keys 的第一个元素就是原 order_id
             try:
                 # --- 聚合计算 ---
                 total_volume = group['traded_volume'].sum()
@@ -273,27 +274,28 @@ class MyTraderCallback(XtQuantTraderCallback):
         try:
             print(f"【XtQuant】收到成交推送: {trade.stock_code} ({trade.traded_volume}股)")
             
-            manager = XtManager()
-            if not manager.trader: return
+            with trade_db.connection_context():
+                manager = XtManager()
+                if not manager.trader: return
 
-            # 1. 核心策略：收到推送后，不直接只处理这一笔，而是去查询该委托的“全家桶”
-            #    这样无论是第1笔还是第N笔，我们都能拿到当前状态的所有分笔
-            all_trades = manager.trader.query_stock_trades(manager.acc)
-            
-            related_trades = []
-            target_order_id = str(trade.order_id) # 统一转字符串
-            
-            if all_trades:
-                # 过滤出该 OrderID 的所有成交
-                related_trades = [t for t in all_trades if str(t.order_id) == target_order_id]
-            
-            # 2. 兜底处理：如果 query 结果里没有当前这笔（极低概率，如QMT还没来得及更新缓存）
-            #    我们手动把当前推送的 trade 加进去，确保不会漏单
-            #    这也是解决“首笔交易可能查不到”的关键
-            known_ids = set(str(t.traded_id) for t in related_trades)
-            if str(trade.traded_id) not in known_ids:
-                print("【注意】查询列表未包含当前推送，手动追加")
-                related_trades.append(trade)
+                # 1. 查询该委托的全家桶
+                all_trades = manager.trader.query_stock_trades(manager.acc)
+                
+                related_trades = []
+                target_order_id = str(trade.order_id) # 统一转字符串
+                
+                if all_trades:
+                    # 过滤出该 OrderID 的所有成交
+                    related_trades = [t for t in all_trades if str(t.order_id) == target_order_id]
+                
+                # 2. 兜底处理
+                known_ids = set(str(t.traded_id) for t in related_trades)
+                if str(trade.traded_id) not in known_ids:
+                    print("【注意】查询列表未包含当前推送，手动追加")
+                    related_trades.append(trade)
+                    
+                # 3. 统一合并入库
+                manager._process_merge_and_save(related_trades)
                 
             # 3. 统一合并入库
             manager._process_merge_and_save(related_trades)
