@@ -1,4 +1,5 @@
 import dash
+import re
 from flask import request
 from user_agents import parse
 from flask_principal import Principal, Permission, RoleNeed, identity_loaded
@@ -17,11 +18,47 @@ external_js = [
     'https://registry.npmmirror.com/klinecharts/9.8.10/files/dist/umd/klinecharts.min.js'
 ]
 
-app = dash.Dash(
+class CustomDash(dash.Dash):
+    def interpolate_index(self, **kwargs):
+        scripts = kwargs.pop("scripts")
+
+        # 1. 提取所有 http 开头的 script 标签
+        external_scripts = re.findall('(<script src="http.*?"></script>)', scripts)
+
+        for external_script in external_scripts:
+            # 2. 提取 src 内部的 URL
+            src_match = re.findall('"(.*?)"', external_script)
+            if not src_match:
+                continue
+            
+            origin_library_src = src_match[0]
+
+            # 3. 提取关键信息 (增加对末尾可能存在的查询参数的兼容)
+            # 修改正则：不强制 $ 结尾，防止有 ?v=xxx 等干扰
+            match_res = re.findall("com/(.+)@(.+?)/([^?#]+)", origin_library_src)
+            
+            if match_res:
+                # 只有匹配成功才进行解包
+                result = match_res[0]
+                library_name, library_version, library_file = result
+                
+                # 4. 基于 npmmirror 构建新的资源地址
+                new_library_src = f"https://registry.npmmirror.com/{library_name}/{library_version}/files/{library_file}"
+                scripts = scripts.replace(origin_library_src, new_library_src)
+            else:
+                # 如果匹配失败，打印一下看看是哪个 URL 没匹配上，方便调试
+                # print(f"Skipping URL: {origin_library_src}")
+                pass
+
+        return super(CustomDash, self).interpolate_index(scripts=scripts, **kwargs)
+
+
+app = CustomDash(
     __name__,
     title=BaseConfig.app_title,
     suppress_callback_exceptions=True,
     compress=True,  # 隐式依赖flask-compress
+    serve_locally=False,
     update_title=None,
     external_scripts=external_js
 )
