@@ -13,8 +13,8 @@ def get_kline_data_from_db(stock_code):
     try:
         # 查询数据库
         query = KlineData.select().where(
-            (KlineData.stock_code == stock_code) & 
-            (KlineData.date >= '2022-01-01')
+            (KlineData.stock_code == stock_code) 
+            # & (KlineData.date >= '2022-01-01')
         ).order_by(KlineData.date)
         
         df = pd.DataFrame(list(query.dicts()))
@@ -25,6 +25,7 @@ def get_kline_data_from_db(stock_code):
         # 数据清洗适配
         df['timestamp'] = (pd.to_datetime(df['date']) - pd.Timedelta(hours=8)).view("i8") // 10 ** 6
         df = df.rename(columns={'amount': 'turnover'})
+        df = df.sort_values(by=['timestamp'])
         required_cols = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover']
         for col in required_cols:
             if col not in df.columns: df[col] = 0
@@ -40,25 +41,140 @@ def get_kline_data_from_db(stock_code):
 
 # 设置模态框
 stock_line_SETTING_MODAL = fac.AntdModal(
-    id='stock-line_modal_setting',
-    title='图表设置',
-    width=500,
+    id = 'stock-line_modal_setting',
     children=[
-        html.Div(fac.AntdSpace([
-            fac.AntdFormItem(fac.AntdSelect(
-                id='stock-line_modal_candle_type',
-                options=[
-                    {"label": "全实心", "value": "candle_solid"},
-                    {"label": "全空心", "value": "candle_stroke"},
-                    {"label": "涨空心", "value": "candle_up_stroke"},
-                    {"label": "跌空心", "value": "candle_down_stroke"},
+        html.Div(
+            fac.AntdSpace(
+                [
+                    fac.AntdFormItem(
+                        fac.AntdSelect(
+                            id='stock-line_modal_candle_type',
+                            options=[
+                                {"label": "全实心", "value": "candle_solid"},
+                                {"label": "全空心", "value": "candle_stroke"},
+                                {"label": "涨空心", "value": "candle_up_stroke"},
+                                {"label": "跌空心", "value": "candle_down_stroke"},
+                                {"label": "OHLC", "value": "ohlc"},
+                                {"label" : "面积图", "value" : "area"},
+                            ],
+                            value='candle_solid',
+                            defaultValue='candle_solid',
+                            persistence=True
+                        ),
+                        label='蜡烛图类型',
+                        colon=False,
+                        style={'width': 200}
+                    ),
+                    fac.AntdFormItem(
+                        fac.AntdSwitch(
+                            id='stock-line_modal_last_price',
+                            checked=True,
+                            persistence=True
+                        ),
+                        label='最新价显示',
+                        colon=False,
+                        style={'width': 200}
+                    )
                 ],
-                value='candle_solid', persistence=True
-            ), label='蜡烛图类型', colon=False),
-            fac.AntdFormItem(fac.AntdSwitch(id='stock-line_modal_grid', checked=True, persistence=True), 
-                           label='网格线', colon=False),
-        ], size=20, wrap=True))
-    ]
+                size=20,
+                wrap=True
+            ),
+        ),
+        html.Div(
+            fac.AntdSpace(
+                [
+                    fac.AntdFormItem(
+                        fac.AntdSwitch(
+                            id='stock-line_modal_high_price',
+                            checked=True,
+                            persistence=True
+                        ),
+                        label='最高价显示',
+                        colon=False,
+                        style={'width': 200}
+                    ),
+                    fac.AntdFormItem(
+                        fac.AntdSwitch(
+                            id='stock-line_modal_low_price',
+                            checked=True,
+                            persistence=True
+                        ),
+                        label='最低价显示',
+                        colon=False,
+                        style={'width': 200}
+                    )
+                ],
+                size=20,
+                wrap=True
+            ),
+        ),
+        html.Div(
+            fac.AntdSpace(
+                [
+                    fac.AntdFormItem(
+                        fac.AntdSwitch(
+                            id='stock-line_modal_last_value',
+                            checked=False,
+                            persistence=True
+                        ),
+                        label='指标最新值',
+                        colon=False,
+                        style={'width': 200}
+                    ),
+                    fac.AntdFormItem(
+                        fac.AntdSelect(
+                            id='stock-line_modal_axis_type',
+                            options=[
+                                {"label": "线性轴", "value": "normal"},
+                                {"label": "百分比轴", "value": "percentage"},
+                                {"label": "对数轴", "value": "log"},
+                            ],
+                            value='normal',
+                            defaultValue='normal',
+                            persistence=True
+                        ),
+                        label='价格轴类型',
+                        colon=False,
+                        style={'width': 200}
+                    )
+                ],
+                size=20,
+                wrap=True
+            ),
+        ),
+        html.Div(
+            fac.AntdSpace(
+                [
+                    fac.AntdFormItem(
+                        fac.AntdSwitch(
+                            id='stock-line_modal_reverse_axis',
+                            checked=False,
+                            persistence=True
+                        ),
+                        label='倒置坐标轴',
+                        colon=False,
+                        style={'width': 200}
+                    ),
+                    fac.AntdFormItem(
+                        fac.AntdSwitch(
+                            id='stock-line_modal_grid',
+                            checked=True,
+                            persistence=True
+                        ),
+                        label='网格线显示',
+                        colon=False,
+                        style={'width': 200}
+                    )
+                ],
+                size=20,
+                wrap=True
+            ),
+        ),
+        
+    ],
+    title='设置',
+    width=500,
+    destroyOnClose=False,
 )
 
 # 页面渲染入口
@@ -142,13 +258,31 @@ app.clientside_callback(
         State("stock-line_search", "nClicks"),
         State("stock-line_modal_candle_type", "value"),
         # 下面这些参数需要与JS函数签名匹配，这里简化传参
-        State("stock-line_modal_candle_type", "value"), # 占位: last_price
-        State("stock-line_modal_candle_type", "value"), # 占位: high_price
-        State("stock-line_modal_candle_type", "value"), # 占位: low_price
-        State("stock-line_modal_candle_type", "value"), # 占位: last_value
-        State("stock-line_modal_candle_type", "value"), # 占位: axis_type
-        State("stock-line_modal_candle_type", "value"), # 占位: reverse
+        State("stock-line_modal_last_price", "checked"),
+        State("stock-line_modal_high_price", "checked"),
+        State("stock-line_modal_low_price", "checked"),
+        State("stock-line_modal_last_value", "checked"),
+        State("stock-line_modal_axis_type", "value"),
+        State("stock-line_modal_reverse_axis", "checked"),
         State("stock-line_modal_grid", "checked"),
+    ],
+    prevent_initial_call=True
+)
+
+app.clientside_callback(
+    ClientsideFunction(
+        namespace="kline",
+        function_name="chartChangeSetting",
+    ),
+    [
+        Input("stock-line_modal_candle_type", "value"),
+        Input("stock-line_modal_last_price", "checked"),
+        Input("stock-line_modal_high_price", "checked"),
+        Input("stock-line_modal_low_price", "checked"),
+        Input("stock-line_modal_last_value", "checked"),
+        Input("stock-line_modal_axis_type", "value"),
+        Input("stock-line_modal_reverse_axis", "checked"),
+        Input("stock-line_modal_grid", "checked"),
     ],
     prevent_initial_call=True
 )
