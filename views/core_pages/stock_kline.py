@@ -177,6 +177,56 @@ stock_line_SETTING_MODAL = fac.AntdModal(
     destroyOnClose=False,
 )
 
+ALL_KLINE_INDICATORS = [
+    'MA', 'EMA', 'SMA', 'BBI', 'VOL', 'MACD',
+    'BOLL', 'KDJ', 'RSI', 'BIAS', 'BRAR',
+    'CCI', 'DMI', 'CR', 'PSY', 'DMA',
+    'TRIX', 'OBV', 'VR', 'WR', 'MTM',
+    'EMV', 'SAR', 'AO', 'ROC', 'PVT',
+    'AVP'
+]
+
+indicator_modal = fac.AntdModal(
+    id="indicator-modal",
+    title="图表指标设置",
+    visible=False,      # 控制弹窗显示的属性是 visible
+    width=600,          # 弹窗宽度
+    maskClosable=True,  # 允许点击遮罩层关闭
+    children=[
+        html.Div([
+            # 带有分割线的优雅标题
+            fac.AntdDivider("主图指标", innerTextOrientation="left"),
+            # FAC 的单选组组件
+            fac.AntdRadioGroup(
+                id='main-chart-indicator',
+                options=[
+                    {'label': '无', 'value': 'NONE'},
+                    {'label': 'MA', 'value': 'MA'},
+                    {'label': 'BOLL', 'value': 'BOLL'},
+                    {'label': 'EMA', 'value': 'EMA'},
+                    {'label': 'SAR', 'value': 'SAR'},
+                    {'label': 'SMA', 'value': 'SMA'},
+                ],
+                value='MA',  # 默认选中 MA
+                direction='horizontal'
+            )
+        ], style={"marginBottom": "20px"}),
+        
+        html.Div([
+            fac.AntdDivider("副图指标", innerTextOrientation="left"),
+            # FAC 的多选组组件
+            fac.AntdCheckboxGroup(
+                id='sub-chart-indicators',
+                # 列表生成
+                options=[
+                    {'label' : i, 'value' : i} for i in ALL_KLINE_INDICATORS
+                ],
+                value=['VOL', 'MACD']  # 默认选中的副图指标
+            )
+        ])
+    ]
+)
+
 # 页面渲染入口
 def render():
     
@@ -188,6 +238,7 @@ def render():
             html.Div(id='stock-line_message_container'),
             # 设置弹窗
             stock_line_SETTING_MODAL,
+            indicator_modal,
             
             # 顶部操作栏
             html.Div(
@@ -206,6 +257,7 @@ def render():
                         '设置', id='stock-line_setting_btn',
                         icon=fac.AntdIcon(icon='antd-setting')
                     ),
+                    fac.AntdButton("指标", id="indicator-btn", type="primary")
                 ]),
                 style={'background': 'white', 'borderRadius': '8px', 'marginBottom': '12px'}
             ),
@@ -287,10 +339,37 @@ app.clientside_callback(
     prevent_initial_call=True
 )
 
+app.clientside_callback(
+    ClientsideFunction(
+        namespace="kline",
+        function_name="updateIndicators",
+    ),
+    [
+        Input("main-chart-indicator", "value"),
+        Input("sub-chart-indicators", "value"),
+    ],
+    State("stock-line_kline_container", "id"),
+    prevent_initial_call=True
+)
+
 # 4. 弹窗控制
 app.clientside_callback(
     """function(n) { return n > 0; }""",
     Output('stock-line_modal_setting', 'visible'),
     Input('stock-line_setting_btn', 'nClicks'),
+    prevent_initial_call=True
+)
+
+app.clientside_callback(
+    """
+    function(nClicks) {
+        if (nClicks) {
+            return true;
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("indicator-modal", "visible"),
+    Input("indicator-btn", "nClicks"),  # 注意：FAC按钮的点击次数属性通常是 nClicks
     prevent_initial_call=True
 )
