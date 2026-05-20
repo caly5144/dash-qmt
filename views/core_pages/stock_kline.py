@@ -187,7 +187,7 @@ ALL_KLINE_INDICATORS = [
 ]
 
 indicator_modal = fac.AntdModal(
-    id="indicator-modal",
+    id="stock-kline-indicator-modal",
     title="图表指标设置",
     visible=False,      # 控制弹窗显示的属性是 visible
     width=600,          # 弹窗宽度
@@ -257,7 +257,7 @@ def render():
                         '设置', id='stock-line_setting_btn',
                         icon=fac.AntdIcon(icon='antd-setting')
                     ),
-                    fac.AntdButton("指标", id="indicator-btn", type="primary")
+                    fac.AntdButton("指标", id="stock-kline-indicator-btn", type="primary")
                 ]),
                 style={'background': 'white', 'borderRadius': '8px', 'marginBottom': '12px'}
             ),
@@ -348,7 +348,6 @@ app.clientside_callback(
         Input("main-chart-indicator", "value"),
         Input("sub-chart-indicators", "value"),
     ],
-    State("stock-line_kline_container", "id"),
     prevent_initial_call=True
 )
 
@@ -369,7 +368,7 @@ app.clientside_callback(
         return window.dash_clientside.no_update;
     }
     """,
-    Output("indicator-modal", "visible"),
-    Input("indicator-btn", "nClicks"),  # 注意：FAC按钮的点击次数属性通常是 nClicks
+    Output("stock-kline-indicator-modal", "visible"),
+    Input("stock-kline-indicator-btn", "nClicks"),  # 注意：FAC按钮的点击次数属性通常是 nClicks
     prevent_initial_call=True
 )

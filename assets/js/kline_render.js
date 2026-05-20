@@ -237,7 +237,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             }
             return window.dash_clientside.no_update
         },
-        updateIndicators: function(mainIndicator, subIndicators, container_id) {
+        updateIndicators: function(mainIndicator, subIndicators) {
             const chart = KlineChartInstance;
             if (!chart) return window.dash_clientside.no_update;
 

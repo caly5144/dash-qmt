@@ -92,18 +92,18 @@ class XtManager:
                 d = t
             else:
                 d = {
-                    'traded_id': str(t.traded_id),
-                    'order_id': str(t.order_id),
-                    'stock_code': t.stock_code,
-                    'traded_time': t.traded_time,
-                    'order_type': t.order_type,
-                    'direction': t.direction,
-                    'offset_flag': t.offset_flag,
-                    'traded_price': t.traded_price,
-                    'traded_volume': t.traded_volume,
-                    'traded_amount': t.traded_amount,
-                    'strategy_name': t.strategy_name,
-                    'order_remark': t.order_remark
+                    'traded_id': str(getattr(t, 'traded_id', '')),
+                    'order_id': str(getattr(t, 'order_id', '')),
+                    'stock_code': getattr(t, 'stock_code', ''),
+                    'traded_time': getattr(t, 'traded_time', 0),
+                    'order_type': getattr(t, 'order_type', 0),
+                    'direction': getattr(t, 'direction', None),
+                    'offset_flag': getattr(t, 'offset_flag', None),
+                    'traded_price': getattr(t, 'traded_price', 0.0),
+                    'traded_volume': getattr(t, 'traded_volume', 0),
+                    'traded_amount': getattr(t, 'traded_amount', 0.0),
+                    'strategy_name': getattr(t, 'strategy_name', ''),
+                    'order_remark': getattr(t, 'order_remark', '')
                 }
             data.append(d)
             
@@ -274,34 +274,43 @@ class MyTraderCallback(XtQuantTraderCallback):
         try:
             print(f"【XtQuant】收到成交推送: {trade.stock_code} ({trade.traded_volume}股)")
             
-            with trade_db.connection_context():
-                manager = XtManager()
-                if not manager.trader: return
+            # 核心修复：严禁在回调线程同步调用 query 接口，需开辟子线程异步处理以防止 QMT 底层死锁
+            import threading
+            def process_trade_async():
+                try:
+                    with trade_db.connection_context():
+                        manager = XtManager()
+                        if not manager.trader: return
 
-                # 1. 查询该委托的全家桶
-                all_trades = manager.trader.query_stock_trades(manager.acc)
-                
-                related_trades = []
-                target_order_id = str(trade.order_id) # 统一转字符串
-                
-                if all_trades:
-                    # 过滤出该 OrderID 的所有成交
-                    related_trades = [t for t in all_trades if str(t.order_id) == target_order_id]
-                
-                # 2. 兜底处理
-                known_ids = set(str(t.traded_id) for t in related_trades)
-                if str(trade.traded_id) not in known_ids:
-                    print("【注意】查询列表未包含当前推送，手动追加")
-                    related_trades.append(trade)
-                    
-                # 3. 统一合并入库
-                manager._process_merge_and_save(related_trades)
-                
-            # 3. 统一合并入库
-            manager._process_merge_and_save(related_trades)
+                        # 1. 此时在子线程中调用 query_stock_trades 是安全的
+                        all_trades = manager.trader.query_stock_trades(manager.acc)
+                        
+                        related_trades = []
+                        target_order_id = str(trade.order_id) # 统一转字符串
+                        
+                        if all_trades:
+                            # 过滤出该 OrderID 的所有成交
+                            related_trades = [t for t in all_trades if str(t.order_id) == target_order_id]
+                        
+                        # 2. 兜底处理 (安全获取 traded_id 防报错)
+                        known_ids = set(str(getattr(t, 'traded_id', '')) for t in related_trades)
+                        if str(trade.traded_id) not in known_ids:
+                            print("【注意】查询列表未包含当前推送，手动追加")
+                            related_trades.append(trade)
+                            
+                        # 3. 统一合并入库 (删除了 with 块外面的重复代码)
+                        manager._process_merge_and_save(related_trades)
+                        
+                except Exception as e:
+                    print(f"【XtQuant】异步处理成交推送失败: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+            # 启动异步线程处理入库
+            threading.Thread(target=process_trade_async).start()
             
         except Exception as e:
-            print(f"【XtQuant】处理成交推送失败: {e}")
+            print(f"【XtQuant】接收成交推送异常: {e}")
             import traceback
             traceback.print_exc()
     
