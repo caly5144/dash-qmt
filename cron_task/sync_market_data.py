@@ -11,21 +11,10 @@ from xtquant import xtdata
 
 # 导入项目数据库模型和工具函数
 from models.market_models import KlineData, market_db
-from utils.utility import millisecond_to_time
+from utils.utility import millisecond_to_time, safe_float
 
 # 关闭 xtdata 的欢迎信息
 xtdata.enable_hello = False
-
-def safe_float(val):
-    """安全转换浮点数，处理 None 和 NaN"""
-    try:
-        if val is None:
-            return 0.0
-        if isinstance(val, float) and math.isnan(val):
-            return 0.0
-        return float(val)
-    except (ValueError, TypeError):
-        return 0.0
 
 def get_target_codes():
     """获取标的代码列表"""
