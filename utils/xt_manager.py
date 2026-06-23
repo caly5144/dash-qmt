@@ -113,7 +113,7 @@ class XtManager:
         count = 0
         
         # 2. 按 order_id 分组聚合
-        for keys, group in df.groupby(['order_id', 'stock_code', 'direction'], dropna=False):
+        for keys, group in df.groupby(['order_id', 'stock_code', 'order_type'], dropna=False):
             order_id = keys[0]  # keys 的第一个元素就是原 order_id
             try:
                 # --- 聚合计算 ---

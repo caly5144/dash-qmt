@@ -6,7 +6,7 @@ from configs.settings import DATA_DIR, GLOBAL_SECRETS
 
 class TushareAPI:
     def __init__(self):
-        self.token = GLOBAL_SECRETS.get('TUSHARE_TOKEN')
+        self.token = GLOBAL_SECRETS.get('TUSHARE_API_TOKEN')
         self.pro = ts.pro_api(self.token)
     
 
